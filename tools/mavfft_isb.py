@@ -14,6 +14,7 @@ import copy
 
 from argparse import ArgumentParser
 import scipy.signal as signal
+import matplotlib.pyplot as plt
 
 parser = ArgumentParser(description=__doc__)
 parser.add_argument("--condition", default=None, help="select packets by condition")
@@ -156,6 +157,7 @@ def mavfft_fttd(logfile, multi_log):
         print("Throttle average %f" % thr_ref)
 
     sum_fft = {}
+    heatmap_fft = {}
     freqmap = {}
     sample_rates = {}
     counts = {}
@@ -178,6 +180,13 @@ def mavfft_fttd(logfile, multi_log):
                 "Z": numpy.zeros(fft_len//2+1),
             }
             counts[thing_to_plot.tag()] = 0
+
+        if thing_to_plot.tag() not in heatmap_fft:
+            heatmap_fft[thing_to_plot.tag()] = {
+                "X": [numpy.zeros(fft_len//2+1)],
+                "Y": [numpy.zeros(fft_len//2+1)],
+                "Z": [numpy.zeros(fft_len//2+1)],
+            }
 
         if thing_to_plot.tag() not in window:
             if args.fft_window == 'hanning':
@@ -219,6 +228,7 @@ def mavfft_fttd(logfile, multi_log):
             d_fft[-1] = 0
             # accumulate the sums
             sum_fft[thing_to_plot.tag()][axis] += d_fft
+            heatmap_fft[thing_to_plot.tag()][axis] = numpy.concatenate((heatmap_fft[thing_to_plot.tag()][axis], [d_fft]))
             freq = numpy.fft.rfftfreq(len(d), 1.0/thing_to_plot.sample_rate_hz)
             freqmap[thing_to_plot.tag()] = freq
 
@@ -296,6 +306,18 @@ def mavfft_fttd(logfile, multi_log):
 
             pylab.text(0.5, 0.95, textstr, fontsize=12,
                 verticalalignment='top', bbox=props, transform=pylab.gca().transAxes)
+
+    #print(heatmap_fft["Gyro[0]"]["X"])
+    for sensor in heatmap_fft:
+        print("Sensor: %s" % str(sensor))
+        for axis in [ "X","Y","Z" ]:
+            # only plot the selected axis
+            if axis not in args.axis:
+                continue
+            fig, ax = plt.subplots()
+            im = ax.imshow(heatmap_fft[sensor][axis])
+            fig.tight_layout()
+            plt.show()
 
 # auto set option for adding log names to legend label
 multi_log = False
