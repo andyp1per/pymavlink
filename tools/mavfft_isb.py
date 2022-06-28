@@ -174,37 +174,38 @@ def mavfft_fttd(logfile, multi_log):
     for thing_to_plot in things_to_plot:
 
         fft_len = len(thing_to_plot.data["X"])
+        tag = thing_to_plot.tag()
 
-        if thing_to_plot.tag() not in sum_fft:
-            sum_fft[thing_to_plot.tag()] = {
+        if tag not in sum_fft:
+            sum_fft[tag] = {
                 "X": numpy.zeros(fft_len//2+1),
                 "Y": numpy.zeros(fft_len//2+1),
                 "Z": numpy.zeros(fft_len//2+1),
             }
-            counts[thing_to_plot.tag()] = 0
+            counts[tag] = 0
 
-        if thing_to_plot.tag() not in heatmap_fft:
-            heatmap_fft[thing_to_plot.tag()] = {
-                "X": [numpy.zeros(fft_len//2+1)],
-                "Y": [numpy.zeros(fft_len//2+1)],
-                "Z": [numpy.zeros(fft_len//2+1)],
+        if tag not in heatmap_fft:
+            heatmap_fft[tag] = {
+                "X": [numpy.empty(fft_len//2-1)],
+                "Y": [numpy.empty(fft_len//2-1)],
+                "Z": [numpy.empty(fft_len//2-1)],
             }
-            timestamps[thing_to_plot.tag()] = numpy.array([])
+            timestamps[tag] = numpy.array([0.])
 
-        timestamps[thing_to_plot.tag()] = numpy.concatenate((timestamps[thing_to_plot.tag()], [thing_to_plot.time_us/1000000.0]))
+        timestamps[tag] = numpy.concatenate((timestamps[tag], [thing_to_plot.time_us/1000000.0]))
 
-        if thing_to_plot.tag() not in window:
+        if tag not in window:
             if args.fft_window == 'hanning':
                 # create hanning window
-                window[thing_to_plot.tag()] = numpy.hanning(fft_len)
+                window[tag] = numpy.hanning(fft_len)
             elif args.fft_window == 'blackman':
                 # create blackman window
-                window[thing_to_plot.tag()] = numpy.blackman(fft_len)
+                window[tag] = numpy.blackman(fft_len)
             else:
-                window[thing_to_plot.tag()] = numpy.arange(fft_len)
-                window[thing_to_plot.tag()].fill(1)
+                window[tag] = numpy.arange(fft_len)
+                window[tag].fill(1)
             # calculate NEBW constant
-            S2[thing_to_plot.tag()] = numpy.inner(window[thing_to_plot.tag()], window[thing_to_plot.tag()])
+            S2[tag] = numpy.inner(window[tag], window[tag])
 
         for axis in [ "X","Y","Z" ]:
             # only plot the selected axis
@@ -218,12 +219,12 @@ def mavfft_fttd(logfile, multi_log):
             if len(d) == 0:
                 print("No data?!?!?!")
                 continue
-            if len(window[thing_to_plot.tag()]) != fft_len:
+            if len(window[tag]) != fft_len:
                 print("Skipping corrupted frame of length %d" % fft_len)
                 continue
 
             # apply window to the input
-            d *= window[thing_to_plot.tag()]
+            d *= window[tag]
             # perform RFFT
             d_fft = numpy.fft.rfft(d)
             # convert to squared complex magnitude
@@ -232,18 +233,19 @@ def mavfft_fttd(logfile, multi_log):
             d_fft[0] = 0
             d_fft[-1] = 0
             # accumulate the sums
-            sum_fft[thing_to_plot.tag()][axis] += d_fft
-            heatmap_fft[thing_to_plot.tag()][axis] = numpy.concatenate((heatmap_fft[thing_to_plot.tag()][axis], [d_fft]))
+            sum_fft[tag][axis] += d_fft
+            heatmap_fft[tag][axis] = numpy.concatenate((heatmap_fft[tag][axis], [d_fft[1:-1]]))
             freq = numpy.fft.rfftfreq(len(d), 1.0/thing_to_plot.sample_rate_hz)
-            freqmap[thing_to_plot.tag()] = freq
+            freqmap[tag] = freq
 
-        sample_rates[thing_to_plot.tag()] = thing_to_plot.sample_rate_hz
-        counts[thing_to_plot.tag()] += 1
+        sample_rates[tag] = thing_to_plot.sample_rate_hz
+        counts[tag] += 1
 
     numpy.seterr(divide = 'ignore')
     for sensor in sum_fft:
         print("Sensor: %s" % str(sensor))
         fig = pylab.figure(str(sensor))
+        fig.canvas.manager.window.SetPosition((500, 500))
         for axis in [ "X","Y","Z" ]:
             # only plot the selected axis
             if axis not in args.axis:
@@ -325,12 +327,31 @@ def mavfft_fttd(logfile, multi_log):
                 continue
 
             psd = 2 * heatmap_fft[sensor][axis] / sample_rates[sensor] * S2[sensor]
-            psd = 10 * numpy.log10 (psd)
+            psd = numpy.flip(numpy.transpose(10 * numpy.log10(psd)), axis=0)
+            print(sample_rates[sensor])
+            print(psd.shape)
+            print(psd)
+
+            numts = len(timestamps[sensor])
+            startts = round(timestamps[sensor][1])
+            endts = round(timestamps[sensor][numts-1])
+            numhz = len(freqmap[sensor])
+            starthz = round(freqmap[sensor][0])
+            endhz = round(freqmap[sensor][numhz-1])
 
             fig, ax = plt.subplots()
-            im = ax.imshow(psd)
-            print(timestamps[sensor])
-            ax.set_xticks(numpy.arange(len(timestamps[sensor])), labels=timestamps[sensor])
+            fig.canvas.manager.window.SetPosition((500, 500))
+            im = ax.imshow(psd, origin='upper', extent=(startts, endts, starthz, endhz),
+                vmin=-60.0, vmax=20.0)
+            print(timestamps[sensor].shape)
+            ax.set_xticks(numpy.arange(startts, endts, round((endts - startts)/ 10.0)))
+            ax.set_xlabel("Seconds")
+            ax.set_yticks(numpy.arange(starthz, endhz, round((endhz - starthz)/ 10.0)))
+            ax.set_ylabel("Hz")
+
+            cbar = ax.figure.colorbar(im, ax=ax)
+            cbar.ax.set_ylabel("dB d^2/s^2/Hz", rotation=-90, va="bottom")
+
             fig.tight_layout()
             plt.show()
 
