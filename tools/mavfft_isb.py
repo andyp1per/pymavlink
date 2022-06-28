@@ -245,7 +245,7 @@ def mavfft_fttd(logfile, multi_log):
     for sensor in sum_fft:
         print("Sensor: %s" % str(sensor))
         fig = pylab.figure(str(sensor))
-        fig.canvas.manager.window.SetPosition((500, 500))
+        #fig.canvas.manager.window.SetPosition((500, 500))
         for axis in [ "X","Y","Z" ]:
             # only plot the selected axis
             if axis not in args.axis:
@@ -328,9 +328,7 @@ def mavfft_fttd(logfile, multi_log):
 
             psd = 2 * heatmap_fft[sensor][axis] / sample_rates[sensor] * S2[sensor]
             psd = numpy.flip(numpy.transpose(10 * numpy.log10(psd)), axis=0)
-            print(sample_rates[sensor])
-            print(psd.shape)
-            print(psd)
+            psd = numpy.nan_to_num(psd, neginf=0.0)
 
             numts = len(timestamps[sensor])
             startts = round(timestamps[sensor][1])
@@ -340,17 +338,16 @@ def mavfft_fttd(logfile, multi_log):
             endhz = round(freqmap[sensor][numhz-1])
 
             fig, ax = plt.subplots()
-            fig.canvas.manager.window.SetPosition((500, 500))
+            #fig.canvas.manager.window.SetPosition((500, 500))
             im = ax.imshow(psd, origin='upper', extent=(startts, endts, starthz, endhz),
-                vmin=-60.0, vmax=20.0)
-            print(timestamps[sensor].shape)
+                vmin=-50.0, vmax=50.0)
             ax.set_xticks(numpy.arange(startts, endts, round((endts - startts)/ 10.0)))
             ax.set_xlabel("Seconds")
             ax.set_yticks(numpy.arange(starthz, endhz, round((endhz - starthz)/ 10.0)))
             ax.set_ylabel("Hz")
 
             cbar = ax.figure.colorbar(im, ax=ax)
-            cbar.ax.set_ylabel("dB d^2/s^2/Hz", rotation=-90, va="bottom")
+            cbar.ax.set_ylabel("$dB d^2/s^2/Hz$", rotation=-90, va="bottom")
 
             fig.tight_layout()
             plt.show()
