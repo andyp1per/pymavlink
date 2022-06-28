@@ -43,6 +43,7 @@ def mavfft_fttd(logfile, multi_log):
             self.instance = ffth.instance
             self.sample_rate_hz = ffth.smp_rate
             self.multiplier = ffth.mul
+            self.time_us = ffth.TimeUS
             self.data = {}
             self.data["X"] = []
             self.data["Y"] = []
@@ -162,6 +163,7 @@ def mavfft_fttd(logfile, multi_log):
     sample_rates = {}
     counts = {}
     window = {}
+    timestamps = {}
     S2 = {}
     hntch_mode_names = { 0:"No", 1:"Throttle", 2:"RPM", 3:"ESC", 4:"FFT"}
     hntch_option_names = { 0:"Single", 1:"Double", 2:"Dynamic", 4:"Loop-Rate"}
@@ -187,6 +189,9 @@ def mavfft_fttd(logfile, multi_log):
                 "Y": [numpy.zeros(fft_len//2+1)],
                 "Z": [numpy.zeros(fft_len//2+1)],
             }
+            timestamps[thing_to_plot.tag()] = numpy.array([])
+
+        timestamps[thing_to_plot.tag()] = numpy.concatenate((timestamps[thing_to_plot.tag()], [thing_to_plot.time_us/1000000.0]))
 
         if thing_to_plot.tag() not in window:
             if args.fft_window == 'hanning':
@@ -308,14 +313,24 @@ def mavfft_fttd(logfile, multi_log):
                 verticalalignment='top', bbox=props, transform=pylab.gca().transAxes)
 
     #print(heatmap_fft["Gyro[0]"]["X"])
+    done = False;
     for sensor in heatmap_fft:
         print("Sensor: %s" % str(sensor))
-        for axis in [ "X","Y","Z" ]:
+        if done:
+            break
+        done = True
+        for axis in [ "X" ]:
             # only plot the selected axis
             if axis not in args.axis:
                 continue
+
+            psd = 2 * heatmap_fft[sensor][axis] / sample_rates[sensor] * S2[sensor]
+            psd = 10 * numpy.log10 (psd)
+
             fig, ax = plt.subplots()
-            im = ax.imshow(heatmap_fft[sensor][axis])
+            im = ax.imshow(psd)
+            print(timestamps[sensor])
+            ax.set_xticks(numpy.arange(len(timestamps[sensor])), labels=timestamps[sensor])
             fig.tight_layout()
             plt.show()
 
